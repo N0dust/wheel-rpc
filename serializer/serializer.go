@@ -8,14 +8,14 @@ type Header struct {
 	Error         string
 }
 
-type Serialize interface {
+type Serializer interface {
 	io.Closer
 	ReadHeader(*Header) error
 	ReadBody(interface{}) error
 	Write(*Header, interface{}) error
 }
 
-type NewSerialize func(closer io.ReadWriteCloser) Serialize
+type NewSerializer func(closer io.ReadWriteCloser) Serializer
 
 type Type string
 
@@ -24,9 +24,9 @@ const (
 	JsonType Type = "application/json" // not implemented
 )
 
-var NewSerializeFuncMap map[Type]NewSerialize
+var NewSerializerFuncMap map[Type]NewSerializer
 
 func init() {
-	NewSerializeFuncMap = make(map[Type]NewSerialize)
-	NewSerializeFuncMap[GobType] = NewGobSerializer
+	NewSerializerFuncMap = make(map[Type]NewSerializer)
+	NewSerializerFuncMap[GobType] = NewGobSerializer
 }

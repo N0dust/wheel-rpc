@@ -46,7 +46,7 @@ func (s *GobSerializer) Write(header *Header, i interface{}) error {
 	return err
 }
 
-func NewGobSerializer(conn io.ReadWriteCloser) Serialize {
+func NewGobSerializer(conn io.ReadWriteCloser) Serializer {
 	buf := bufio.NewWriter(conn)
 	return &GobSerializer{
 		conn: conn,
