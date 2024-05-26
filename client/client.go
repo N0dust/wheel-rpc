@@ -8,7 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
-	"wheel-rpc/serializer"
+	"wheel-rpc/coder"
 	"wheel-rpc/server"
 )
 
@@ -26,15 +26,15 @@ func (c *Call) done() { // send single to outside
 }
 
 type Client struct {
-	serializer serializer.Serializer
-	opt        *server.Option
-	sending    sync.Mutex // protect following
-	header     serializer.Header
-	mu         sync.Mutex // protect following
-	seq        uint64
-	pending    map[uint64]*Call
-	closing    bool // user has called Close
-	shutdown   bool // server has told us to stop
+	coder    coder.Coder
+	opt      *server.Option
+	sending  sync.Mutex // protect following
+	header   coder.Header
+	mu       sync.Mutex // protect following
+	seq      uint64
+	pending  map[uint64]*Call
+	closing  bool // user has called Close
+	shutdown bool // server has told us to stop
 }
 
 var (
@@ -43,7 +43,7 @@ var (
 )
 
 func NewClient(conn net.Conn, opt *server.Option) (*Client, error) {
-	f := serializer.NewSerializerFuncMap[opt.SerializerType]
+	f := coder.NewCoderFuncMap[opt.SerializerType]
 	if f == nil {
 		err := fmt.Errorf("invalid codec type %s", opt.SerializerType)
 		log.Println("rpc client: codec error:", err)
@@ -58,12 +58,12 @@ func NewClient(conn net.Conn, opt *server.Option) (*Client, error) {
 	return newClientCodec(f(conn), opt), nil
 }
 
-func newClientCodec(s serializer.Serializer, opt *server.Option) *Client {
+func newClientCodec(s coder.Coder, opt *server.Option) *Client {
 	client := &Client{
-		seq:        1, // seq starts with 1, 0 means invalid call
-		serializer: s,
-		opt:        opt,
-		pending:    make(map[uint64]*Call),
+		seq:     1, // seq starts with 1, 0 means invalid call
+		coder:   s,
+		opt:     opt,
+		pending: make(map[uint64]*Call),
 	}
 	go client.receive()
 	return client
@@ -76,7 +76,7 @@ func (c *Client) Close() error {
 		return io.ErrClosedPipe
 	}
 	c.closing = true
-	return c.serializer.Close()
+	return c.coder.Close()
 }
 
 func (c *Client) IsAvailable() bool {
@@ -120,8 +120,8 @@ func (c *Client) terminateCall(err error) {
 func (c *Client) receive() {
 	var err error
 	for err == nil {
-		var h serializer.Header
-		if err = c.serializer.ReadHeader(&h); err != nil {
+		var h coder.Header
+		if err = c.coder.ReadHeader(&h); err != nil {
 			break
 		}
 		call := c.deleteCall(h.Seq)
@@ -129,13 +129,13 @@ func (c *Client) receive() {
 		case call == nil:
 			// it usually means that Write partially failed
 			// and call was already removed.
-			err = c.serializer.ReadBody(nil)
+			err = c.coder.ReadBody(nil)
 		case h.Error != "":
 			call.Error = fmt.Errorf(h.Error)
-			err = c.serializer.ReadBody(nil)
+			err = c.coder.ReadBody(nil)
 			call.done()
 		default:
-			err = c.serializer.ReadBody(call.Reply)
+			err = c.coder.ReadBody(call.Reply)
 			if err != nil {
 				call.Error = errors.New("reading body " + err.Error())
 			}
@@ -199,7 +199,7 @@ func (c *Client) send(call *Call) {
 	c.header.Error = ""
 
 	// encode and send the request
-	if err := c.serializer.Write(&c.header, call.Args); err != nil {
+	if err := c.coder.Write(&c.header, call.Args); err != nil {
 		call := c.deleteCall(seq)
 		// call may be nil, it usually means that Write partially failed,
 		// client has received the response and handled

@@ -1,4 +1,4 @@
-package serializer
+package coder
 
 import (
 	"bufio"
@@ -6,26 +6,26 @@ import (
 	"io"
 )
 
-type GobSerializer struct {
+type GobCoder struct {
 	conn io.ReadWriteCloser
 	buf  *bufio.Writer
 	dec  *gob.Decoder
 	enc  *gob.Encoder
 }
 
-func (s *GobSerializer) Close() error {
+func (s *GobCoder) Close() error {
 	return s.conn.Close()
 }
 
-func (s *GobSerializer) ReadHeader(header *Header) error {
+func (s *GobCoder) ReadHeader(header *Header) error {
 	return s.dec.Decode(header)
 }
 
-func (s *GobSerializer) ReadBody(i interface{}) error {
+func (s *GobCoder) ReadBody(i interface{}) error {
 	return s.dec.Decode(i)
 }
 
-func (s *GobSerializer) Write(header *Header, i interface{}) error {
+func (s *GobCoder) Write(header *Header, i interface{}) error {
 	var err error
 	defer func() {
 		_ = s.buf.Flush()
@@ -46,9 +46,9 @@ func (s *GobSerializer) Write(header *Header, i interface{}) error {
 	return err
 }
 
-func NewGobSerializer(conn io.ReadWriteCloser) Serializer {
+func NewGobCoder(conn io.ReadWriteCloser) Coder {
 	buf := bufio.NewWriter(conn)
-	return &GobSerializer{
+	return &GobCoder{
 		conn: conn,
 		buf:  buf,
 		dec:  gob.NewDecoder(conn),

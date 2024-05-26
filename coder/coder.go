@@ -1,4 +1,4 @@
-package serializer
+package coder
 
 import "io"
 
@@ -8,14 +8,14 @@ type Header struct {
 	Error         string
 }
 
-type Serializer interface {
+type Coder interface {
 	io.Closer
 	ReadHeader(*Header) error
 	ReadBody(interface{}) error
 	Write(*Header, interface{}) error
 }
 
-type NewSerializer func(closer io.ReadWriteCloser) Serializer
+type NewSerializer func(closer io.ReadWriteCloser) Coder
 
 type Type string
 
@@ -24,9 +24,9 @@ const (
 	JsonType Type = "application/json" // not implemented
 )
 
-var NewSerializerFuncMap map[Type]NewSerializer
+var NewCoderFuncMap map[Type]NewSerializer
 
 func init() {
-	NewSerializerFuncMap = make(map[Type]NewSerializer)
-	NewSerializerFuncMap[GobType] = NewGobSerializer
+	NewCoderFuncMap = make(map[Type]NewSerializer)
+	NewCoderFuncMap[GobType] = NewGobCoder
 }
