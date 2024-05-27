@@ -51,12 +51,11 @@ func main() {
 			defer wg.Done()
 			args := &Args{Num1: i, Num2: i * i}
 			var reply int
-			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
 			if err := client.Call(ctx, "Foo.Sum", args, &reply); err != nil {
 				log.Fatal("call Foo.Sum error:", err)
 			}
 			log.Printf("%d + %d = %d", args.Num1, args.Num2, reply)
-			cancelFunc()
 		}(i)
 	}
 	wg.Wait()
