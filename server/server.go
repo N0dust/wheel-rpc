@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 	"wheel-rpc/coder"
 	"wheel-rpc/service"
 )
@@ -17,11 +18,14 @@ const MagicNumber = 0x3bef5c
 type Option struct {
 	MagicNumber    int
 	SerializerType coder.Type
+	ConnectTimeout time.Duration
+	HandleTimeout  time.Duration
 }
 
 var DefaultOption = &Option{
 	MagicNumber:    MagicNumber,
 	SerializerType: coder.GobType,
+	ConnectTimeout: 10 * time.Second,
 }
 
 type Server struct {
@@ -60,13 +64,13 @@ func (s *Server) ServeConn(conn net.Conn) {
 		log.Println("rpc server:invalid coder type")
 		return
 	}
-	s.ServeNewConn(f(conn))
+	s.ServeNewConn(f(conn), opt.HandleTimeout)
 }
 
 var invalidRequest = struct{}{}
 
-func (s *Server) ServeNewConn(serializer coder.Coder) {
-	sending := &sync.Mutex{}
+func (s *Server) ServeNewConn(serializer coder.Coder, handleTimeout time.Duration) {
+	sendMutex := &sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	for {
 		req, err := s.readRequest(serializer)
@@ -75,11 +79,11 @@ func (s *Server) ServeNewConn(serializer coder.Coder) {
 				break
 			}
 			req.h.Error = err.Error()
-			s.sendResponse(serializer, req.h, invalidRequest, sending)
+			s.sendResponse(serializer, req.h, invalidRequest, sendMutex)
 			continue
 		}
 		wg.Add(1)
-		go s.handleRequest(serializer, req, sending, wg)
+		go s.handleRequest(serializer, req, sendMutex, wg, handleTimeout)
 	}
 	wg.Wait()
 	_ = serializer.Close()
@@ -143,15 +147,34 @@ func (s *Server) readRequest(serializer coder.Coder) (*request, error) {
 	return req, err
 }
 
-func (s *Server) handleRequest(c coder.Coder, req *request, sending *sync.Mutex, wg *sync.WaitGroup) {
+func (s *Server) handleRequest(c coder.Coder, req *request, sending *sync.Mutex, wg *sync.WaitGroup, timeout time.Duration) {
 	defer wg.Done()
-	err := req.service.Call(req.methodType, req.argV, req.replyV)
-	if err != nil {
-		req.h.Error = err.Error()
-		s.sendResponse(c, req.h, invalidRequest, sending)
+	called := make(chan int)
+	sent := make(chan int)
+	go func() {
+		err := req.service.Call(req.methodType, req.argV, req.replyV)
+		called <- 1
+		if err != nil {
+			req.h.Error = err.Error()
+			s.sendResponse(c, req.h, invalidRequest, sending)
+			sent <- 1
+			return
+		}
+		s.sendResponse(c, req.h, req.replyV.Interface(), sending)
+		sent <- 1
+	}()
+	if timeout == 0 {
+		<-called
+		<-sent
 		return
 	}
-	s.sendResponse(c, req.h, req.replyV.Interface(), sending)
+	select {
+	case <-time.After(timeout):
+		req.h.Error = "rpc server: request handle timeout"
+		s.sendResponse(c, req.h, invalidRequest, sending)
+	case <-called:
+		<-sent
+	}
 }
 
 func (s *Server) sendResponse(serializer coder.Coder, h *coder.Header, body interface{}, sending *sync.Mutex) {
