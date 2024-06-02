@@ -6,27 +6,13 @@ import (
 	"net"
 	"sync"
 	"time"
+	"wheel-rpc/model"
 	"wheel-rpc/server"
 	"wheel-rpc/xclient"
 )
 
-type Foo int
-
-type Args struct{ Num1, Num2 int }
-
-func (f Foo) Sum(args Args, reply *int) error {
-	*reply = args.Num1 + args.Num2
-	return nil
-}
-
-func (f Foo) Sleep(args Args, reply *int) error {
-	time.Sleep(time.Second * time.Duration(args.Num1))
-	*reply = args.Num1 + args.Num2
-	return nil
-}
-
 func startServer(addrCh chan string) {
-	var foo Foo
+	var foo model.Foo
 	l, _ := net.Listen("tcp", ":0")
 	newServer := server.NewServer()
 	_ = newServer.Register(&foo)
@@ -34,7 +20,7 @@ func startServer(addrCh chan string) {
 	newServer.Accept(l)
 }
 
-func foo(xc *xclient.XClient, ctx context.Context, typ, serviceMethod string, args *Args) {
+func foo(xc *xclient.XClient, ctx context.Context, typ, serviceMethod string, args *model.Args) {
 	var reply int
 	var err error
 	switch typ {
@@ -60,7 +46,7 @@ func call(addr1, addr2 string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			foo(xc, context.Background(), "call", "Foo.Sum", &Args{Num1: i, Num2: i * i})
+			foo(xc, context.Background(), "call", "Foo.Sum", &model.Args{Num1: i, Num2: i * i})
 		}(i)
 	}
 	wg.Wait()
@@ -75,10 +61,10 @@ func broadcast(addr1, addr2 string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			foo(xc, context.Background(), "broadcast", "Foo.Sum", &Args{Num1: i, Num2: i * i})
+			foo(xc, context.Background(), "broadcast", "Foo.Sum", &model.Args{Num1: i, Num2: i * i})
 			// expect 2 - 5 timeout
 			ctx, _ := context.WithTimeout(context.Background(), time.Second*2)
-			foo(xc, ctx, "broadcast", "Foo.Sleep", &Args{Num1: i, Num2: i * i})
+			foo(xc, ctx, "broadcast", "Foo.Sleep", &model.Args{Num1: i, Num2: i * i})
 		}(i)
 	}
 	wg.Wait()
