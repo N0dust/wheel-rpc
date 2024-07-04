@@ -1,2 +1,2 @@
 # wheel-rpc
-another rpc framework
+Exercise program for understanding RPC
